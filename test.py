@@ -72,54 +72,43 @@ from numpy.linalg import norm
 for question_idx, ds_item in enumerate(filtered_train_data):
 
     if ds_item['qtype'] == 'mc':
-        if ds_item['id'] == 'to be deleted':
-            answer =ds_item['answer']
-            question = ds_item['question']
-            choice = ds_item['choices']
-            # Print the context
-            #print(answer)
-            opt = ord(answer) - ord('A')
-            ranswer = choice[opt]
-            #print(ranswer)
-            background = background[:min(len(background), 64)]
-            pred = get_response(question, background)
-            #print(pred)
-            acc = countVec(ranswer, pred)
-            #print(f"{acc:.2f}")
-            # print(f"{distilbertVec(ranswer, pred):.2f}")
+        answer =ds_item['answer']
+        question = ds_item['question']
+        choice = ds_item['choices']
+        # Print the context
+        #print(answer)
+        opt = ord(answer) - ord('A')
+        ranswer = choice[opt]
+        #print(ranswer)
+        background = background[:min(len(background), 64)]
+        pred = get_response(question, background)
+        #print(pred)
+        acc = countVec(ranswer, pred)
+        #print(f"{acc:.2f}")
+        # print(f"{distilbertVec(ranswer, pred):.2f}")
     elif ds_item['qtype'] == 't/f':
-        if ds_item['id'] == 'to be deleted':
-            question = ds_item['question']
-            answer =ds_item['answer']
-            background = ds_item['background']
-            # Print the context
-            print(answer)
-            background = background[:min(len(background), 128)]
-            pred = get_response(question+" Just answer 'Yes' or 'No'.", background)
-            print(pred)
-            acc = countVec(answer, pred)
-            print(f"{acc:.2f}")
-            #print(f"{distilbertVec(answer, pred):.2f}")
+        question = ds_item['question']
+        answer =ds_item['answer']
+        background = ds_item['background']
+        # Print the context
+        print(answer)
+        background = background[:min(len(background), 128)]
+        pred = get_response(question+" Just answer 'Yes' or 'No'.", background)
+        print(pred)
+        acc = countVec(answer, pred)
+        print(f"{acc:.2f}")
+        #print(f"{distilbertVec(answer, pred):.2f}")
     elif ds_item['qtype'] == 'num':
-        if ds_item['id'] == 'M403':
-            question = ds_item['question']
-            answer =ds_item['answer']
-            background = ds_item['background']
-            # Print the context
-            print(question)
-            print(answer)
-            background = background[:min(len(background), 128)]
-            pred = get_response(question, background)
-            print(pred)
-            threshold = 0.5
-            vector1 = np.array([float(pred)])
-            vector2 = np.array([float(answer)])
-            cos_sim = dot(vector1, vector2)/(norm(vector1)*norm(vector1))
-            print(cos_sim)
-            # Determine the predicted class based on the threshold value
-            predicted_class = 1 if pred >= threshold else 0
-            # Determine if the prediction is correct
-            is_correct = predicted_class == round(answer)
-            # Calculate the accuracy of the prediction
-            accuracy = 1 if is_correct else 0
-            print(f"Accuracy: {accuracy}")
+        question = ds_item['question']
+        answer =ds_item['answer']
+        background = ds_item['background']
+        # Print the context
+        print(question)
+        print(answer)
+        background = background[:min(len(background), 128)]
+        pred = get_response(question, background)
+        print(pred)
+        vector1 = np.array([float(pred)])
+        vector2 = np.array([float(answer)])
+        cos_sim = dot(vector1, vector2)/(norm(vector1)*norm(vector1))
+        print(cos_sim)
