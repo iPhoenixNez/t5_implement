@@ -12,9 +12,31 @@ autocast_questions = [q for q in autocast_questions if q['status'] == 'Resolved'
 
 filtered_train_data = [example for example in autocast_questions if example['id'] not in test_ids and example['answer'] is not None]
 
+import random
+
+selected_data = []
+
+# dictionary to keep track of number of selected questions for each type
+selected_counts = {'mc': 0, 'num': 0, 't/f': 0}
+desired_counts = {'mc': 200, 'num': 100, 't/f': 500}
+
+# loop over examples in filtered_train_data
+for example in filtered_train_data:
+    # check if this example's qtype has already been selected enough times
+    if selected_counts[example['qtype']] >= desired_counts[example['qtype']]:
+        continue
+        
+    # select this example
+    selected_data.append(example)
+    selected_counts[example['qtype']] += 1
+    
+    # check if we've selected enough examples of each type
+    if all(count >= desired_counts[qtype] for qtype, count in selected_counts.items()):
+        break
+
+
 import re
 CLEANR = re.compile('<.*?>') 
-
 
 # Load the tokenizer and model
 tokenizer = AutoTokenizer.from_pretrained("mrm8488/t5-base-finetuned-qasc")
@@ -37,7 +59,7 @@ def get_response(question, context, max_length=64):
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 from transformers import AutoTokenizer, AutoModel
-'''
+
 tokenizer_acc = AutoTokenizer.from_pretrained("distilbert-base-cased")
 model_acc = AutoModel.from_pretrained("distilbert-base-cased")
 
@@ -54,14 +76,34 @@ def distilbertVec(ranswer, pred):
     # Compute the cosine similarity between the two sentence vectors
     similarity = cosine_similarity(real_answer_vec, prediction_vec)
     return similarity[0][0]   
-'''
+
 def countVec(ranswer, pred):
+    if not ranswer or not pred:
+        return 0
     # Create a CountVectorizer object to convert the sentences to vectors of word counts
-    vectorizer = CountVectorizer().fit_transform([ranswer, pred])
+    vectorizer = CountVectorizer(stop_words='english').fit_transform([ranswer, pred])
     # Calculate the cosine similarity between the two vectors
     cosine_sim = cosine_similarity(vectorizer[0], vectorizer[1])[0][0]
     # Print the cosine similarity
     return cosine_sim
+
+def count_or_distilbert_vec(ranswer, pred):
+    try:
+        similarity = countVec(ranswer, pred)
+        if similarity is not None:
+            return similarity
+    except:
+        pass
+    return distilbertVec(ranswer, pred)
+
+
+import re
+
+def extract_float(s):
+    try:
+        return float(re.search(r'\d+\.\d+', s).group())
+    except AttributeError:
+        return float(0)
 
 def brier_score(probabilities, answer_probabilities):
     return ((probabilities - answer_probabilities) ** 2).sum() / 2
@@ -69,10 +111,12 @@ def brier_score(probabilities, answer_probabilities):
 from numpy import dot
 from numpy.linalg import norm
 import decimal
-for question_idx, ds_item in enumerate(filtered_train_data):
-    predictions = []
-    answers = []
-    qtypes = []
+predictions = []
+answers = []
+qtypes = []
+for question_idx, ds_item in enumerate(selected_data):
+    prediction_arr = None
+    answer_arr = None
     if ds_item['qtype'] == 'mc':
         answer =ds_item['answer']
         question = ds_item['question']
@@ -91,7 +135,7 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         prediction_acc = []
         print("pred"+pred)
         for i in range(len(choice)):
-            prediction_acc.append(countVec(choice[i], pred))# get a list of the accuray for every choice
+            prediction_acc.append(count_or_distilbert_vec(choice[i], pred))# get a list of the accuray for every choice
             print("choice "+choice[i])
         # Convert list to decimals
         print(prediction_acc)
@@ -100,15 +144,13 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         if summ == 0:
             summ = 1e-5
         # Divide each decimal by the sum of decimals
-        prediction_acc = [x / summ for x in prediction_acc]
+        prediction_acc = [float(x) / float(summ) for x in prediction_acc]
         prediction_arr = np.array(prediction_acc)
         answer_arr = np.zeros(len(choice))
         answer_arr[opt] = 1
         print(prediction_arr)
         print(answer_arr)
-        predictions.append(prediction_arr)
-        answers.append(answer_arr)
-        qtypes.append(ds_item['qtype'])
+        
     elif ds_item['qtype'] == 't/f':#G 28, G30
         question = ds_item['question']
         answer =ds_item['answer']
@@ -122,8 +164,8 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         print(pred)
         #acc = countVec(answer, pred)
         prediction_acc = []
-        prediction_acc.append(countVec("yes", pred))# get a list of the accuray for every choice
-        prediction_acc.append(countVec("no", pred))# get a list of the accuray for every choice
+        prediction_acc.append(count_or_distilbert_vec("yes", pred))# get a list of the accuray for every choice
+        prediction_acc.append(count_or_distilbert_vec("no", pred))# get a list of the accuray for every choice
         # Convert list to decimals
         print(prediction_acc)
         prediction_acc = [decimal.Decimal(str(x)) for x in prediction_acc]
@@ -131,19 +173,17 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         if summ == 0:
             summ = 1e-5
         # Divide each decimal by the sum of decimals
-        prediction_acc = [x / summ for x in prediction_acc]
+        prediction_acc = [float(x) / float(summ) for x in prediction_acc]
         prediction_arr = np.array(prediction_acc)
         #print(f"{acc:.2f}")
         print(prediction_arr)
         if answer == 'yes':
-            answer_acc = [1, 0]
-            answer_acc = np.array(answer_acc)
+            answer_arr = [1, 0]
+            answer_arr = np.array(answer_arr)
         else:
-            answer_acc = [0, 1]
-            answer_acc = np.array(answer_acc)
-        predictions.append(prediction_arr)
-        answers.append(answer_arr)
-        qtypes.append(ds_item['qtype'])
+            answer_arr = [0, 1]
+            answer_arr = np.array(answer_arr)
+        print(answer_arr)
         #print(f"{distilbertVec(answer, pred):.2f}")
     
     elif ds_item['qtype'] == 'num':
@@ -153,19 +193,48 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         # Print the context
         print(question)
         print(answer)
+        print(background)
         background = background[:min(len(background), 128)]
         pred = get_response(question, background)
         print(pred)
-        vector1 = np.array([float(pred)])
-        vector2 = np.array([float(answer)])
-        cos_sim = dot(vector1, vector2)/(norm(vector1)*norm(vector1))
-        print(cos_sim)
-        predictions.append(cos_sim)
-        answers.append(answer)
-        qtypes.append(ds_item['qtype'])
+        pred_floats = extract_float(pred)
+        print(pred_floats)  
+        cos_sim = count_or_distilbert_vec(str(answer), str(pred_floats))
+        prediction_arr = float(cos_sim)
+        print(prediction_arr)
+        answer_arr = answer
+    predictions.append(prediction_arr)
+    answers.append(answer_arr)
+    qtypes.append(ds_item['qtype'])
+    print(predictions)
+    print(answers)
+    print(qtypes)
 
+tf_results, mc_results, num_results = [],[],[]
+for p, a, qtype in zip(predictions, answers, qtypes):
+    if qtype == 't/f':
+        tf_results.append(brier_score(p, a))
+    elif qtype == 'mc':
+        mc_results.append(brier_score(p, a))
+    else:
+        num_results.append(np.abs(p - a))
+
+if not os.path.exists('submission'):
+    os.makedirs('submission')
+with open(os.path.join('submission', 'train_predictions.pkl'), 'wb') as f:
+    pickle.dump(predictions, f, protocol=2)
+print("Prediction saved!")
+print()
+
+# Get the perfroamcen and combined metric
+performance = f"T/F: {np.mean(tf_results)*100:.2f}, MCQ: {np.mean(mc_results)*100:.2f}, NUM: {np.mean(num_results)*100:.2f}"
+combined_metric = f"Combined Metric: {(np.mean(tf_results) + np.mean(mc_results) + np.mean(num_results))*100:.2f}"
+print(performance)
+print(combined_metric)
+with open(os.path.join('submission', 'report.txt'), 'w') as f:
+    f.write(str(performance) + "\n" + str(combined_metric))
+    
 '''
-
 import decimal
 def cal_posb():
     predictions = []
