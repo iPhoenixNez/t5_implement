@@ -68,36 +68,84 @@ def brier_score(probabilities, answer_probabilities):
 
 from numpy import dot
 from numpy.linalg import norm
-
+import decimal
 for question_idx, ds_item in enumerate(filtered_train_data):
-
+    predictions = []
+    answers = []
+    qtypes = []
     if ds_item['qtype'] == 'mc':
         answer =ds_item['answer']
         question = ds_item['question']
-        choice = ds_item['choices']
+        choice = ds_item['choices']  
+        background = ds_item['background']
+        background = background[:min(len(background), 64)]
         # Print the context
         #print(answer)
+        print(question)
+        print(background)
+        print(answer)
+        pred = get_response(question, background)
         opt = ord(answer) - ord('A')
         ranswer = choice[opt]
-        #print(ranswer)
-        background = background[:min(len(background), 64)]
-        pred = get_response(question, background)
-        #print(pred)
-        acc = countVec(ranswer, pred)
-        #print(f"{acc:.2f}")
-        # print(f"{distilbertVec(ranswer, pred):.2f}")
-    elif ds_item['qtype'] == 't/f':
+        print(ranswer)
+        prediction_acc = []
+        print("pred"+pred)
+        for i in range(len(choice)):
+            prediction_acc.append(countVec(choice[i], pred))# get a list of the accuray for every choice
+            print("choice "+choice[i])
+        # Convert list to decimals
+        print(prediction_acc)
+        prediction_acc = [decimal.Decimal(str(x)) for x in prediction_acc]
+        summ = sum(prediction_acc)
+        if summ == 0:
+            summ = 1e-5
+        # Divide each decimal by the sum of decimals
+        prediction_acc = [x / summ for x in prediction_acc]
+        prediction_arr = np.array(prediction_acc)
+        answer_arr = np.zeros(len(choice))
+        answer_arr[opt] = 1
+        print(prediction_arr)
+        print(answer_arr)
+        predictions.append(prediction_arr)
+        answers.append(answer_arr)
+        qtypes.append(ds_item['qtype'])
+    elif ds_item['qtype'] == 't/f':#G 28, G30
         question = ds_item['question']
         answer =ds_item['answer']
         background = ds_item['background']
         # Print the context
+        print(question)
+        print(background)
         print(answer)
         background = background[:min(len(background), 128)]
         pred = get_response(question+" Just answer 'Yes' or 'No'.", background)
         print(pred)
-        acc = countVec(answer, pred)
-        print(f"{acc:.2f}")
+        #acc = countVec(answer, pred)
+        prediction_acc = []
+        prediction_acc.append(countVec("yes", pred))# get a list of the accuray for every choice
+        prediction_acc.append(countVec("no", pred))# get a list of the accuray for every choice
+        # Convert list to decimals
+        print(prediction_acc)
+        prediction_acc = [decimal.Decimal(str(x)) for x in prediction_acc]
+        summ = sum(prediction_acc)
+        if summ == 0:
+            summ = 1e-5
+        # Divide each decimal by the sum of decimals
+        prediction_acc = [x / summ for x in prediction_acc]
+        prediction_arr = np.array(prediction_acc)
+        #print(f"{acc:.2f}")
+        print(prediction_arr)
+        if answer == 'yes':
+            answer_acc = [1, 0]
+            answer_acc = np.array(answer_acc)
+        else:
+            answer_acc = [0, 1]
+            answer_acc = np.array(answer_acc)
+        predictions.append(prediction_arr)
+        answers.append(answer_arr)
+        qtypes.append(ds_item['qtype'])
         #print(f"{distilbertVec(answer, pred):.2f}")
+    
     elif ds_item['qtype'] == 'num':
         question = ds_item['question']
         answer =ds_item['answer']
@@ -112,3 +160,94 @@ for question_idx, ds_item in enumerate(filtered_train_data):
         vector2 = np.array([float(answer)])
         cos_sim = dot(vector1, vector2)/(norm(vector1)*norm(vector1))
         print(cos_sim)
+        predictions.append(cos_sim)
+        answers.append(answer)
+        qtypes.append(ds_item['qtype'])
+
+'''
+
+import decimal
+def cal_posb():
+    predictions = []
+    answers = [] 
+    for question_idx, ds_item in enumerate(filtered_train_data):
+        if ds_item['qtype'] == 'mc':
+            answer =ds_item['answer']
+            question = ds_item['question']
+            choice = ds_item['choices']  
+            background = ds_item['background']
+            background = background[:min(len(background), 128)]
+            # Print the context
+            #print(answer)
+            pred = get_response(question, background)
+            choices = choice.values.tolist()
+            opt = ord(answer) - ord('A')
+            prediction_acc = []
+            for i in range(len(choices)):
+                prediction_acc[i] = countVec(choices[i], pred)# get a list of the accuray for every choice
+            prediction_acc = [decimal.Decimal(str(x)) for x in prediction_acc]
+            summ = sum(prediction_acc)
+            # Divide each decimal by the sum of decimals
+            prediction_acc = [x / summ for x in prediction_acc]
+            prediction_arr = np.array(prediction_acc)
+            answer_arr = np.zeros(len(choices))
+            answer_arr[opt] = 1
+        predictions.append(prediction_arr)
+        answers.append(answer_arr)
+
+import numpy as np
+predicted_probs = np.array(a)
+true_probs = np.array([0, 0, 1, 0])
+score = brier_score(predicted_probs, true_probs)#the list a, [1, 0, 0, 0] for example
+print(score)
+
+
+import string 
+def calculate_answer_probability(answer_arr, choice_arr, qtype):
+    """
+    Give the answer array, calculate the possibilities of each answer given the choices and answer_arr
+    """
+    # Process the answer
+    if qtype == "t/f":
+        # unique: 2x1 array
+        # counts: 2x1 array
+        choice_arr_tf = ["yes", "no"]
+        N = len(answer_arr)
+        unique, counts = np.unique(answer_arr, return_counts=True)
+        choice_len = len(choice_arr_tf)
+        new_counts = np.zeros(choice_len)
+        for i in range(choice_len):
+            curr_choice = choice_arr_tf[i]
+            if curr_choice not in unique:
+                new_counts[i] = 0
+            else:
+                new_counts[i] = counts[curr_choice == unique]
+
+        # Probability of yes/no
+        return new_counts / N
+    
+    elif qtype == "mc":
+        # Total number of prediciton
+        # Should be 10
+        # choice_arr = process_choice(choice_arr)
+        N = len(answer_arr)
+        unique, counts = np.unique(answer_arr, return_counts=True)
+        choice_len = len(choice_arr)
+        # Generate answer choice
+        answer_choice = list(string.ascii_uppercase)[:choice_len]
+        # Create a new counts array to hold the prob of all answers
+        new_counts = np.zeros(len(choice_arr))
+        for i in range(choice_len): 
+            curr_choice = answer_choice[i]
+            if curr_choice not in unique: 
+                new_counts[i] = 0
+            else:
+                new_counts[i] = counts[curr_choice == unique]
+ 
+        # Probability of each answer in an array
+        return new_counts / N
+
+    elif qtype == "num":
+        # Number questions, return the number only  
+        return answer_arr[0]
+        '''
